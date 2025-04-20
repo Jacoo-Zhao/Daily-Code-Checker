@@ -1,0 +1,46 @@
+name: Check Daily GitHub Commit
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # 每天澳洲时间18:00
+  workflow_dispatch:
+
+jobs:
+  daily-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check user commit activity
+        id: check
+        env:
+          GH_USERNAME: your-github-username
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          TODAY=$(date -u '+%Y-%m-%d')
+          echo "Checking commits for $TODAY"
+
+          events=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/users/$GH_USERNAME/events")
+
+          found_commit=$(echo "$events" | jq "[.[] | select(.type == \"PushEvent\") | select(.created_at | startswith(\"$TODAY\"))] | length")
+
+          echo "Commits today: $found_commit"
+
+          if [ "$found_commit" -eq 0 ]; then
+            echo "need_notify=true" >> $GITHUB_OUTPUT
+          else
+            echo "need_notify=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send reminder email
+        if: steps.check.outputs.need_notify == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "⏰ 你今天还没在 GitHub 上写代码！"
+          to: your_email@example.com
+          from: GitHub Bot <bot@example.com>
+          body: |
+            嘿！截至 18:00，你今天还没有在 GitHub 上 commit 代码哦。别忘了打卡写代码！
